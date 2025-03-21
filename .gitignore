@@ -1,0 +1,72 @@
+# Python bytecode files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.env/
+.venv/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Project specific
+*.mp4
+*.avi
+*.mov
+*.flv
+video_comments.csv
+video_data.csv
+downloads/
+output/
+temp/
+logs/
+
+# Model files and large data
+*.weights
+*.h5
+*.pkl
+*.model
+*.bin
+
+# Credentials and sensitive info
+.env
+credentials.json
+config.ini
+secret_keys.py
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Test cache
+.coverage
+.pytest_cache/
+htmlcov/
+
+# TikTok specific
+tiktok_cookies.txt
+tiktok_session/
+
+# Mac specific
+.DS_Store
+.AppleDouble
+.LSOverride
