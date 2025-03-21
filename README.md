@@ -53,12 +53,6 @@ result = analyze_video_with_llava("path/to/video.mp4")
 print(result)
 ```
 
-### Running Tests
-Run the test suite to ensure everything is working correctly:
-```bash
-pytest tests/
-```
-
 ## File Structure
 ```
 matchmaide-scraper/
