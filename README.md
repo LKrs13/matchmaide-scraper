@@ -5,7 +5,7 @@ Matchmaide Scraper is a Python-based project designed to analyze and extract ins
 
 ## Features
 - **Main Feature**: `scraper.py` - The primary script for scraping and processing video data.
-- Analyze video content using the `llava` model.
+- Analyze video content using the `videoma` model.
 - Extract and process metadata from videos.
 - Classify video content using pre-trained models.
 - Analyze comments and content for deeper insights.
