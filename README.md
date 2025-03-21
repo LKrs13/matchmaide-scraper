@@ -44,15 +44,6 @@ python comment_scraper.py
 - Analyzes comment topics and sentiment using the `analyze_comments` function.
 - Saves the processed data to `video_comments.csv`.
 
-### Analyzing Videos
-Use the `analyze_video_with_llava` function in `video/llava.py` to analyze video content. Example:
-```python
-from video.llava import analyze_video_with_llava
-
-result = analyze_video_with_llava("path/to/video.mp4")
-print(result)
-```
-
 ## File Structure
 ```
 matchmaide-scraper/
@@ -68,22 +59,3 @@ matchmaide-scraper/
 ├── video_data.csv     # Generated metadata for downloaded videos
 ├── video_comments.csv  # Generated file containing analyzed comment data
 ```
-
-## Dependencies
-The project requires the following Python libraries:
-- OpenCV
-- NumPy
-- Pandas
-- PyTest
-- Logging
-
-Install all dependencies using the `requirements.txt` file.
-
-## Contributing
-Contributions are welcome! Please follow these steps:
-1. Fork the repository.
-2. Create a new branch for your feature or bugfix.
-3. Submit a pull request with a detailed description of your changes.
-
-## License
-This project is licensed under the MIT License. See the LICENSE file for details.
