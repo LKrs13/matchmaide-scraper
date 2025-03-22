@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import csv
 import logging
 import os
@@ -21,8 +22,9 @@ logger = logging.getLogger(__name__)
 
 TRANSCRIPT_FILE = "transcript.csv"
 VIDEO_DATA_FILE = "video_data.csv"
+PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(max_workers=1)
 MAX_VIDEOS_PER_USER = 30
-MS_TOKEN = ""
+MS_TOKEN = "gaASJOVO5GywrRBvIjTpowwp9LOO9mNFigIsNRC_mCnywpIR-6TJS_JZrYcyP7QQyB89ZiX9cAfpgDoVuuT2oG6uOxVvcDItEtWJnaeSJ6Y3Uo0Ww6vFmvLmQJ3HySuZ2UcatpitHMO5HFFfN1AtjsYX"
 
 
 def setup_transcript_file():
@@ -133,7 +135,10 @@ async def process_video(username, video):
             transcript_text = await asyncio.to_thread(
                 transcribe_audio, audio_path, video_id
             )
-        video_niche_content = await asyncio.to_thread(classify_video, video_path)
+        loop = asyncio.get_running_loop()
+        video_niche_content = await loop.run_in_executor(
+            PROCESS_POOL, classify_video, video_path
+        )
         await asyncio.to_thread(
             save_to_transcript_file,
             username,
@@ -173,7 +178,11 @@ async def main():
         return
     async with TikTokApi() as api:
         logger.info("Creating TikTok API session")
-        await api.create_sessions(headless=False, num_sessions=1, sleep_after=3)
+        await api.create_sessions(
+            headless=False,
+            num_sessions=1,
+            sleep_after=3,
+        )
         for _, row in influencers_df.iterrows():
             await process_influencer(api, row["username"])
     logger.info("TikTok scraping completed")
