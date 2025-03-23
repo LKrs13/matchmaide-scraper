@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 TRANSCRIPT_FILE = "transcript.csv"
 VIDEO_DATA_FILE = "video_data.csv"
 PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(max_workers=1)
-MAX_VIDEOS_PER_USER = 30
+MAX_VIDEOS_PER_USER = 15
 MS_TOKEN = "gaASJOVO5GywrRBvIjTpowwp9LOO9mNFigIsNRC_mCnywpIR-6TJS_JZrYcyP7QQyB89ZiX9cAfpgDoVuuT2oG6uOxVvcDItEtWJnaeSJ6Y3Uo0Ww6vFmvLmQJ3HySuZ2UcatpitHMO5HFFfN1AtjsYX"
 
 
