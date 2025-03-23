@@ -1,4 +1,5 @@
 import asyncio
+import concurrent
 import csv
 import logging
 import os
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 TRANSCRIPT_FILE = "transcript.csv"
 VIDEO_DATA_FILE = "video_data.csv"
+PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(max_workers=1)
 MAX_VIDEOS_PER_USER = 9
 MS_TOKEN = "gaASJOVO5GywrRBvIjTpowwp9LOO9mNFigIsNRC_mCnywpIR-6TJS_JZrYcyP7QQyB89ZiX9cAfpgDoVuuT2oG6uOxVvcDItEtWJnaeSJ6Y3Uo0Ww6vFmvLmQJ3HySuZ2UcatpitHMO5HFFfN1AtjsYX"
 
@@ -133,7 +135,10 @@ async def process_video(username, video):
             transcript_text = await asyncio.to_thread(
                 transcribe_audio, audio_path, video_id
             )
-        video_niche_content = classify_video(video_path)
+        loop = asyncio.get_running_loop()
+        video_niche_content = await loop.run_in_executor(
+             PROCESS_POOL, classify_video, video_path
+        )
         await asyncio.to_thread(
             save_to_transcript_file,
             username,
@@ -144,7 +149,7 @@ async def process_video(username, video):
         await asyncio.to_thread(clean_up_files, video_path, audio_path)
     except Exception as e:
         logger.error(f"Error processing video {video_id}: {e}")
-        await asyncio.to_thread(clean_up_files, video_path, audio_path)
+        await asyncio.to_thread(clean_up_files, video_path)
 
 
 async def process_influencer(api: TikTokApi, username: str):
