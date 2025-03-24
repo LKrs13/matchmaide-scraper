@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 
 TRANSCRIPT_FILE = "transcript.csv"
 VIDEO_DATA_FILE = "video_data.csv"
-PROCESS_POOL = concurrent.futures.ProcessPoolExecutor(max_workers=1)
-MAX_VIDEOS_PER_USER = 9
+MAX_VIDEOS_PER_USER = 5
 MS_TOKEN = "gaASJOVO5GywrRBvIjTpowwp9LOO9mNFigIsNRC_mCnywpIR-6TJS_JZrYcyP7QQyB89ZiX9cAfpgDoVuuT2oG6uOxVvcDItEtWJnaeSJ6Y3Uo0Ww6vFmvLmQJ3HySuZ2UcatpitHMO5HFFfN1AtjsYX"
 
 
@@ -156,9 +155,11 @@ async def process_influencer(api: TikTokApi, username: str):
         tasks = []
         video_count = 0
         video: Video = None
-        async for video in user.videos(count=MAX_VIDEOS_PER_USER):
+        async for video in user.videos(count=5):
             tasks.append(process_video(username, video))
             video_count += 1
+            if video_count >= MAX_VIDEOS_PER_USER:
+                break
         await asyncio.gather(*tasks)
         logger.info(f"Processed {video_count} videos for {username}")
     except Exception as e:
