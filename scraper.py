@@ -1,8 +1,11 @@
 import asyncio
 import concurrent
 import csv
+import json
 import logging
 import os
+import time
+from datetime import datetime
 
 import pandas as pd
 import pyktok as pyk
@@ -22,8 +25,16 @@ logger = logging.getLogger(__name__)
 
 TRANSCRIPT_FILE = "transcript.csv"
 VIDEO_DATA_FILE = "video_data.csv"
+CHECKPOINT_FILE = "scraper_checkpoint.json"
 MAX_VIDEOS_PER_USER = 5
 MS_TOKEN = "gaASJOVO5GywrRBvIjTpowwp9LOO9mNFigIsNRC_mCnywpIR-6TJS_JZrYcyP7QQyB89ZiX9cAfpgDoVuuT2oG6uOxVvcDItEtWJnaeSJ6Y3Uo0Ww6vFmvLmQJ3HySuZ2UcatpitHMO5HFFfN1AtjsYX"
+
+# Global checkpoint data
+checkpoint = {
+    "last_completed_influencer": None,
+    "processed_videos": set(),
+    "last_update": None,
+}
 
 
 def setup_transcript_file():
@@ -35,6 +46,60 @@ def setup_transcript_file():
                 ["username", "video_id", "transcript", "video_niche_content"]
             )
         logger.info(f"Created {TRANSCRIPT_FILE} with headers")
+
+
+def load_checkpoint():
+    """Load checkpoint data if it exists."""
+    global checkpoint
+
+    if os.path.exists(CHECKPOINT_FILE):
+        try:
+            with open(CHECKPOINT_FILE, "r") as f:
+                saved_checkpoint = json.load(f)
+
+                # Convert the list of processed videos back to a set
+                if "processed_videos" in saved_checkpoint:
+                    saved_checkpoint["processed_videos"] = set(
+                        saved_checkpoint["processed_videos"]
+                    )
+
+                checkpoint.update(saved_checkpoint)
+
+            logger.info(
+                f"Loaded checkpoint - Last influencer: {checkpoint['last_completed_influencer']}, "
+                f"Processed videos: {len(checkpoint['processed_videos'])}"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Failed to load checkpoint: {e}")
+
+    logger.info("No checkpoint found, starting from the beginning")
+    return False
+
+
+def save_checkpoint():
+    """Save current progress to checkpoint file."""
+    global checkpoint
+
+    # Update the timestamp
+    checkpoint["last_update"] = datetime.now().isoformat()
+
+    try:
+        # Convert set to list for JSON serialization
+        serializable_checkpoint = checkpoint.copy()
+        serializable_checkpoint["processed_videos"] = list(
+            checkpoint["processed_videos"]
+        )
+
+        with open(CHECKPOINT_FILE, "w") as f:
+            json.dump(serializable_checkpoint, f)
+
+        logger.info(
+            f"Saved checkpoint - Last influencer: {checkpoint['last_completed_influencer']}, "
+            f"Processed videos: {len(checkpoint['processed_videos'])}"
+        )
+    except Exception as e:
+        logger.error(f"Failed to save checkpoint: {e}")
 
 
 def get_influencers():
@@ -55,6 +120,11 @@ def save_to_transcript_file(username, video_id, transcript, video_niche_content)
             writer = csv.writer(f)
             writer.writerow([username, video_id, transcript, video_niche_content])
         logger.info(f"Saved transcript for video {video_id} by {username}")
+
+        # Add to processed videos in checkpoint
+        checkpoint["processed_videos"].add(video_id)
+        # Save checkpoint every time we process a video to ensure progress isn't lost
+        save_checkpoint()
     except Exception as e:
         logger.error(f"Failed to save transcript for {video_id}: {e}")
 
@@ -123,10 +193,17 @@ def transcribe_audio(audio_path, video_id):
 
 async def process_video(username, video):
     video_id = video.id
+
+    # Skip if we've already processed this video
+    if video_id in checkpoint["processed_videos"]:
+        logger.info(f"Skipping already processed video {video_id} by {username}")
+        return
+
     logger.info(f"Processing video {video_id} by {username}")
     video_path = await asyncio.to_thread(download_video, username, video_id)
     if not video_path:
         return
+
     transcript_text = ""
     try:
         audio_path = await asyncio.to_thread(extract_audio, video_path, video_id)
@@ -155,13 +232,17 @@ async def process_influencer(api: TikTokApi, username: str):
         tasks = []
         video_count = 0
         video: Video = None
-        async for video in user.videos(count=5):
+        async for video in user.videos(count=MAX_VIDEOS_PER_USER):
             tasks.append(process_video(username, video))
             video_count += 1
             if video_count >= MAX_VIDEOS_PER_USER:
                 break
         await asyncio.gather(*tasks)
         logger.info(f"Processed {video_count} videos for {username}")
+
+        # Mark this influencer as completed
+        checkpoint["last_completed_influencer"] = username
+        save_checkpoint()
     except Exception as e:
         logger.error(f"Failed to process influencer {username}: {e}")
 
@@ -170,15 +251,40 @@ async def main():
     """Main function to run the TikTok scraper."""
     logger.info("Starting TikTok scraper")
     setup_transcript_file()
+
+    # Load checkpoint data if it exists
+    load_checkpoint()
+
     influencers_df = get_influencers()
     if influencers_df.empty:
         logger.error("No influencers found. Exiting.")
         return
+
     async with TikTokApi() as api:
         logger.info("Creating TikTok API session")
         await api.create_sessions(headless=False, num_sessions=1, sleep_after=3)
+
+        # Determine where to start from
+        start_processing = False
+        last_influencer = checkpoint["last_completed_influencer"]
+
         for _, row in influencers_df.iterrows():
-            await process_influencer(api, row["username"])
+            current_username = row["username"]
+
+            # If we have a checkpoint and haven't reached it yet, skip
+            if last_influencer and not start_processing:
+                if current_username == last_influencer:
+                    # We found the last processed influencer, so the next one is where we start
+                    start_processing = True
+                    logger.info(f"Resuming from after influencer: {last_influencer}")
+                    continue
+            # If we don't have a checkpoint or we've reached the checkpoint, process normally
+            else:
+                start_processing = True
+
+            if start_processing:
+                await process_influencer(api, current_username)
+
     logger.info("TikTok scraping completed")
 
 
