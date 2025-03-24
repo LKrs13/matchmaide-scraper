@@ -84,12 +84,11 @@ def download_video(username, video_id):
         )
         response = pyk.save_tiktok(video_url, True, VIDEO_DATA_FILE)
         logger.info(f"Downloaded video {video_id} by {username}")
-        return video_path
     except Exception as e:
         logger.error(
             f"Failed to download video {video_id}: {e}", stack_info=True, exc_info=True
         )
-        return None
+    return video_path
 
 
 def extract_audio(video_path, video_id):
@@ -171,6 +170,7 @@ async def main():
     logger.info("Starting TikTok scraper")
     setup_transcript_file()
     influencers_df = get_influencers()
+    influencers_df = influencers_df[153:]
     if influencers_df.empty:
         logger.error("No influencers found. Exiting.")
         return
