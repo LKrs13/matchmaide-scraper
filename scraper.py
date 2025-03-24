@@ -135,10 +135,7 @@ async def process_video(username, video):
             transcript_text = await asyncio.to_thread(
                 transcribe_audio, audio_path, video_id
             )
-        loop = asyncio.get_running_loop()
-        video_niche_content = await loop.run_in_executor(
-             PROCESS_POOL, classify_video, video_path
-        )
+        video_niche_content = await asyncio.to_thread(classify_video, video_path)
         await asyncio.to_thread(
             save_to_transcript_file,
             username,
