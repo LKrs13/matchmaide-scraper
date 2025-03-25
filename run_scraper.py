@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+import glob
 from datetime import datetime
 
 # Configure logging
@@ -24,11 +25,40 @@ logger = logging.getLogger("scraper_monitor")
 shutting_down = False
 
 
+def cleanup_remaining_files():
+    """Clean up any remaining video and audio files in the current directory."""
+    try:
+        # Clean up video files
+        video_patterns = ["@*_video_*.mp4", "*.mp4"]
+        for pattern in video_patterns:
+            for video_file in glob.glob(pattern):
+                try:
+                    os.remove(video_file)
+                    logger.info(f"Cleaned up remaining video file: {video_file}")
+                except Exception as e:
+                    logger.error(f"Failed to clean up video file {video_file}: {e}")
+
+        # Clean up audio files
+        audio_patterns = ["*.wav"]
+        for pattern in audio_patterns:
+            for audio_file in glob.glob(pattern):
+                try:
+                    os.remove(audio_file)
+                    logger.info(f"Cleaned up remaining audio file: {audio_file}")
+                except Exception as e:
+                    logger.error(f"Failed to clean up audio file {audio_file}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
+
+
 def signal_handler(sig, frame):
     """Handle interrupt signals gracefully"""
     global shutting_down
     logger.info(f"Received signal {sig}, shutting down...")
     shutting_down = True
+    # Clean up any remaining files
+    cleanup_remaining_files()
 
 
 def run_with_restart(max_restarts=5, cooldown_period=5):
@@ -119,6 +149,9 @@ def main():
         run_with_restart(args.max_restarts, args.cooldown)
     except Exception as e:
         logger.error(f"Monitor failed with error: {e}")
+    finally:
+        # Clean up any remaining files when the monitor exits
+        cleanup_remaining_files()
 
     logger.info("Scraper monitor shutting down")
 

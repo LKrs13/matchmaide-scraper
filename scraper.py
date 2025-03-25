@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import time
+import glob
 from datetime import datetime
 
 import pandas as pd
@@ -32,7 +33,9 @@ MS_TOKEN = "gaASJOVO5GywrRBvIjTpowwp9LOO9mNFigIsNRC_mCnywpIR-6TJS_JZrYcyP7QQyB89
 # Global checkpoint data
 checkpoint = {
     "last_completed_influencer": None,
+    "currently_processing_influencer": None,  # Track the influencer being processed when killed
     "processed_videos": set(),
+    "failed_influencers": set(),
     "last_update": None,
 }
 
@@ -62,6 +65,12 @@ def load_checkpoint():
                     saved_checkpoint["processed_videos"] = set(
                         saved_checkpoint["processed_videos"]
                     )
+                
+                # Convert failed_influencers from list to set
+                if "failed_influencers" in saved_checkpoint:
+                    saved_checkpoint["failed_influencers"] = set(
+                        saved_checkpoint["failed_influencers"]
+                    )
 
                 checkpoint.update(saved_checkpoint)
 
@@ -85,10 +94,13 @@ def save_checkpoint():
     checkpoint["last_update"] = datetime.now().isoformat()
 
     try:
-        # Convert set to list for JSON serialization
+        # Convert sets to lists for JSON serialization
         serializable_checkpoint = checkpoint.copy()
         serializable_checkpoint["processed_videos"] = list(
             checkpoint["processed_videos"]
+        )
+        serializable_checkpoint["failed_influencers"] = list(
+            checkpoint["failed_influencers"]
         )
 
         with open(CHECKPOINT_FILE, "w") as f:
@@ -228,6 +240,10 @@ async def process_video(username, video):
 async def process_influencer(api: TikTokApi, username: str):
     logger.info(f"Processing influencer: {username}")
     try:
+        # Mark this influencer as currently being processed
+        checkpoint["currently_processing_influencer"] = username
+        save_checkpoint()
+
         user = api.user(username=username)
         tasks = []
         video_count = 0
@@ -242,9 +258,43 @@ async def process_influencer(api: TikTokApi, username: str):
 
         # Mark this influencer as completed
         checkpoint["last_completed_influencer"] = username
+        checkpoint["currently_processing_influencer"] = None  # Clear the currently processing influencer
+        # Remove from failed influencers if it was there
+        checkpoint["failed_influencers"].discard(username)
         save_checkpoint()
     except Exception as e:
         logger.error(f"Failed to process influencer {username}: {e}")
+        # Add to failed influencers
+        checkpoint["failed_influencers"].add(username)
+        checkpoint["currently_processing_influencer"] = None  # Clear the currently processing influencer
+        save_checkpoint()
+
+
+def cleanup_remaining_files():
+    """Clean up any remaining video and audio files in the current directory."""
+    try:
+        # Clean up video files
+        video_patterns = ["@*_video_*.mp4", "*.mp4"]
+        for pattern in video_patterns:
+            for video_file in glob.glob(pattern):
+                try:
+                    os.remove(video_file)
+                    logger.info(f"Cleaned up remaining video file: {video_file}")
+                except Exception as e:
+                    logger.error(f"Failed to clean up video file {video_file}: {e}")
+
+        # Clean up audio files
+        audio_patterns = ["*.wav"]
+        for pattern in audio_patterns:
+            for audio_file in glob.glob(pattern):
+                try:
+                    os.remove(audio_file)
+                    logger.info(f"Cleaned up remaining audio file: {audio_file}")
+                except Exception as e:
+                    logger.error(f"Failed to clean up audio file {audio_file}: {e}")
+
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
 
 
 async def main():
@@ -256,36 +306,50 @@ async def main():
     load_checkpoint()
 
     influencers_df = get_influencers()
+    influencers_df = influencers_df[910:]
     if influencers_df.empty:
         logger.error("No influencers found. Exiting.")
         return
 
-    async with TikTokApi() as api:
-        logger.info("Creating TikTok API session")
-        await api.create_sessions(headless=False, num_sessions=1, sleep_after=3)
+    try:
+        async with TikTokApi() as api:
+            logger.info("Creating TikTok API session")
+            await api.create_sessions(headless=False, num_sessions=1, sleep_after=3)
 
-        # Determine where to start from
-        start_processing = False
-        last_influencer = checkpoint["last_completed_influencer"]
+            # Determine where to start from
+            start_processing = False
+            last_influencer = checkpoint["last_completed_influencer"]
+            currently_processing = checkpoint["currently_processing_influencer"]
 
-        for _, row in influencers_df.iterrows():
-            current_username = row["username"]
+            for _, row in influencers_df.iterrows():
+                current_username = row["username"]
 
-            # If we have a checkpoint and haven't reached it yet, skip
-            if last_influencer and not start_processing:
-                if current_username == last_influencer:
-                    # We found the last processed influencer, so the next one is where we start
-                    start_processing = True
-                    logger.info(f"Resuming from after influencer: {last_influencer}")
+                # Skip failed influencers and the influencer that was being processed when killed
+                if current_username in checkpoint["failed_influencers"]:
+                    logger.info(f"Skipping previously failed influencer: {current_username}")
                     continue
-            # If we don't have a checkpoint or we've reached the checkpoint, process normally
-            else:
-                start_processing = True
+                if current_username == currently_processing:
+                    logger.info(f"Skipping influencer that was being processed when scraper was killed: {current_username}")
+                    continue
 
-            if start_processing:
-                await process_influencer(api, current_username)
+                # If we have a checkpoint and haven't reached it yet, skip
+                if last_influencer and not start_processing:
+                    if current_username == last_influencer:
+                        # We found the last processed influencer, so the next one is where we start
+                        start_processing = True
+                        logger.info(f"Resuming from after influencer: {last_influencer}")
+                        continue
+                # If we don't have a checkpoint or we've reached the checkpoint, process normally
+                else:
+                    start_processing = True
 
-    logger.info("TikTok scraping completed")
+                if start_processing:
+                    await process_influencer(api, current_username)
+
+            logger.info("TikTok scraping completed")
+    finally:
+        # Clean up any remaining files when the scraper exits
+        cleanup_remaining_files()
 
 
 if __name__ == "__main__":
