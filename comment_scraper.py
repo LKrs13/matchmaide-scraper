@@ -28,9 +28,7 @@ def setup_comments_file():
                 [
                     "username",
                     "video_id",
-                    "comments_topics",
-                    "comments_sentiment",
-                    "comment_count",
+                    "comments",
                 ]
             )
         logger.info(f"Created {COMMENTS_FILE} with headers")
