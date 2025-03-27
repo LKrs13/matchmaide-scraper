@@ -306,7 +306,7 @@ async def main():
     load_checkpoint()
 
     influencers_df = get_influencers()
-    influencers_df = influencers_df[910:]
+    influencers_df = influencers_df[2630:]
     if influencers_df.empty:
         logger.error("No influencers found. Exiting.")
         return
