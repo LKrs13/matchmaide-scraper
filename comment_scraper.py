@@ -16,7 +16,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 COMMENTS_FILE = "video_comments.csv"
-MAX_VIDEOS_PER_USER = 9
+MAX_VIDEOS_PER_USER = 5
 MAX_COMMENTS_PER_VIDEO = 5
 
 
@@ -88,6 +88,10 @@ async def process_video_comments(username, video):
         return comments, None, comment_count
 
     except Exception as e:
+        error_msg = str(e)
+        if "empty response" in error_msg.lower() or "detecting you're a bot" in error_msg.lower():
+            logger.error(f"Bot detection triggered for video {video_id} - skipping user")
+            raise Exception("Bot detection triggered")
         logger.error(f"Error processing comments for video {video_id}: {e}")
         raise
 
@@ -100,18 +104,39 @@ async def process_influencer_comments(api: TikTokApi, username: str):
         # Add delay before getting user
         await asyncio.sleep(5)
         logger.info(f"Fetching user data for {username}")
-        user = api.user(username=username)
         
+        try:
+            user = api.user(username=username)
+            if not user:
+                logger.error(f"User {username} not found or account is private - skipping")
+                return
+        except Exception as e:
+            logger.error(f"Error accessing user {username}: {str(e)} - skipping")
+            return
+            
         video_count = 0
-        async for video in user.videos(count=MAX_VIDEOS_PER_USER):
+        async for video in user.videos():
+            if video_count >= MAX_VIDEOS_PER_USER:
+                logger.info(f"Reached maximum videos ({MAX_VIDEOS_PER_USER}) for {username}")
+                break
+                
             video_count += 1
             logger.info(f"Processing video {video_count}/{MAX_VIDEOS_PER_USER} for {username}")
-            await process_video_comments(username, video)
-            # Add delay between videos
-            await asyncio.sleep(5)
+            try:
+                await process_video_comments(username, video)
+            except Exception as e:
+                if "Bot detection triggered" in str(e):
+                    logger.error(f"Bot detection triggered for {username} - skipping to next user")
+                    return
+                raise
+            # Reduced delay between videos since we're processing the same user
+            await asyncio.sleep(2)
 
     except Exception as e:
-        logger.error(f"Failed to process comments for influencer {username}: {e}")
+        if "user" in str(e).lower():
+            logger.error(f"User {username} not accessible - skipping")
+            return
+        logger.error(f"Failed to process comments for influencer {username}: {str(e)}")
         raise
 
 
@@ -143,16 +168,24 @@ async def main():
         logger.info("Creating TikTok API session")
         await api.create_sessions(headless=False, num_sessions=1, sleep_after=3)
         for _, row in influencers_df.iterrows():
+            username = row["username"]
             try:
-                await process_influencer_comments(api, row["username"])
+                await process_influencer_comments(api, username)
                 # Add longer delay between influencers
-                logger.info("Waiting 60 seconds before next influencer...")
-                await asyncio.sleep(60)  # Wait 60 seconds between influencers
+                logger.info("Waiting 180 seconds before next influencer...")
+                await asyncio.sleep(180)  # Wait 180 seconds between influencers
             except Exception as e:
-                logger.error(f"Failed to process influencer {row['username']}: {e}")
+                if "user" in str(e).lower():
+                    logger.error(f"User {username} not accessible - skipping")
+                    continue
+                if "Bot detection triggered" in str(e):
+                    logger.error(f"Bot detection triggered for {username} - waiting longer before next user")
+                    await asyncio.sleep(300)  # Wait 5 minutes after bot detection
+                    continue
+                logger.error(f"Failed to process influencer {username}: {e}")
                 # If we hit an error, wait longer before trying the next one
-                logger.info("Error occurred, waiting 120 seconds before next attempt...")
-                await asyncio.sleep(120)  # Wait 2 minutes before next attempt
+                logger.info("Error occurred, waiting 240 seconds before next attempt...")
+                await asyncio.sleep(240)  # Wait 4 minutes before next attempt
                 continue
 
     logger.info("TikTok comment scraping completed")
