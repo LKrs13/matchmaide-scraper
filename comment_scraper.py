@@ -2,6 +2,7 @@ import asyncio
 import csv
 import logging
 import os
+import argparse
 
 import pandas as pd
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -72,6 +73,8 @@ async def process_video_comments(username, video):
             comment_count += 1
             if comment_count >= MAX_COMMENTS_PER_VIDEO:
                 break
+            # Add small delay between comment fetches
+            await asyncio.sleep(2)
 
         if comments:
             await asyncio.to_thread(
@@ -94,9 +97,18 @@ async def process_influencer_comments(api: TikTokApi, username: str):
     """Process comments for all videos of a specific influencer."""
     logger.info(f"Processing comments for influencer: {username}")
     try:
+        # Add delay before getting user
+        await asyncio.sleep(5)
+        logger.info(f"Fetching user data for {username}")
         user = api.user(username=username)
+        
+        video_count = 0
         async for video in user.videos(count=MAX_VIDEOS_PER_USER):
+            video_count += 1
+            logger.info(f"Processing video {video_count}/{MAX_VIDEOS_PER_USER} for {username}")
             await process_video_comments(username, video)
+            # Add delay between videos
+            await asyncio.sleep(5)
 
     except Exception as e:
         logger.error(f"Failed to process comments for influencer {username}: {e}")
@@ -105,6 +117,12 @@ async def process_influencer_comments(api: TikTokApi, username: str):
 
 async def main():
     """Main function to run the TikTok comment scraper."""
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='TikTok comment scraper')
+    parser.add_argument('--start-from', type=int, default=0,
+                      help='Index of the influencer to start from (0-based)')
+    args = parser.parse_args()
+
     logger.info("Starting TikTok comment scraper")
     setup_comments_file()
     influencers_df = get_influencers()
@@ -113,11 +131,29 @@ async def main():
         logger.error("No influencers found. Exiting.")
         return
 
+    # Slice the dataframe to start from the specified index
+    if args.start_from > 0:
+        if args.start_from >= len(influencers_df):
+            logger.error(f"Start index {args.start_from} is out of range. Total influencers: {len(influencers_df)}")
+            return
+        influencers_df = influencers_df.iloc[args.start_from:]
+        logger.info(f"Starting from influencer at index {args.start_from}")
+
     async with TikTokApi() as api:
         logger.info("Creating TikTok API session")
         await api.create_sessions(headless=False, num_sessions=1, sleep_after=3)
         for _, row in influencers_df.iterrows():
-            await process_influencer_comments(api, row["username"])
+            try:
+                await process_influencer_comments(api, row["username"])
+                # Add longer delay between influencers
+                logger.info("Waiting 60 seconds before next influencer...")
+                await asyncio.sleep(60)  # Wait 60 seconds between influencers
+            except Exception as e:
+                logger.error(f"Failed to process influencer {row['username']}: {e}")
+                # If we hit an error, wait longer before trying the next one
+                logger.info("Error occurred, waiting 120 seconds before next attempt...")
+                await asyncio.sleep(120)  # Wait 2 minutes before next attempt
+                continue
 
     logger.info("TikTok comment scraping completed")
 
