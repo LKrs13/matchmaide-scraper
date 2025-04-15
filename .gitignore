@@ -32,8 +32,6 @@ ENV/
 *.avi
 *.mov
 *.flv
-video_comments.csv
-video_data.csv
 downloads/
 output/
 temp/
